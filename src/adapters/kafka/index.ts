@@ -39,7 +39,19 @@ class KafkaAdapter extends Adapter {
       (sec) => sec.type() === SECURITY_TYPES.SCRAM_SHA_512
     )
 
+    /**
+     * To-do
+     * 1. get clientId from bindings ??
+     * 2. get topic from bindings or message.channel ??
+     * 3. get partitions from bindings ??
+     * 4. get replicas from bindings ??
+     * 5. topicConfiguration	??
+     * 6. groupId ??
+     */
+
     const brokerUrl = new URL(this.AsyncAPIServer.url())
+
+    //kafka initialization
     this.kafka = new Kafka({
       clientId: 'glee-app',
       brokers: [brokerUrl.host],
@@ -58,6 +70,7 @@ class KafkaAdapter extends Adapter {
       } as SASLOptions,
     })
 
+    //kafka consumer
     const consumer = this.kafka.consumer({ groupId: 'glee-group' })
     consumer.on('consumer.connect', () => {
       if (this.firstConnect) {
@@ -84,12 +97,49 @@ class KafkaAdapter extends Adapter {
     })
   }
 
+  async initAdmin() {
+    const admin = this.kafka.admin()
+
+    await admin.connect()
+
+    //creating partitions
+    await admin.createPartitions({
+      validateOnly: false,
+      topicPartitions: [
+        {
+          topic: 'something',
+          count: 3,
+        },
+      ],
+    })
+
+    //creating topics along with partitions
+    await admin.createTopics({
+      validateOnly: false,
+      waitForLeaders: true,
+      timeout: 5000,
+      topics: [
+        {
+          topic: 'something',
+          numPartitions: 3,
+          replicationFactor: 3,
+          replicaAssignment: [],
+          configEntries: [{ name: 'cleanup.policy', value: 'compact' }],
+        },
+      ],
+    })
+
+    await admin.disconnect()
+  }
+
+  //kafka producer
   async send(message: GleeMessage) {
     const producer = this.kafka.producer()
     await producer.connect()
     await producer.send({
       topic: message.channel,
       messages: [
+        // multiple messages?
         {
           key: message.headers.key,
           value: message.payload,
